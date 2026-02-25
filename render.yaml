@@ -1,0 +1,19 @@
+services:
+  - type: worker
+    name: evaluator-worker
+    runtime: python
+    buildCommand: |
+      apt-get update && apt-get install -y libreoffice tesseract-ocr
+      pip install -r requirements.txt
+    startCommand: python worker/ppt_worker.py
+    envVars:
+      - key: AWS_REGION
+        sync: false
+      - key: AWS_ACCESS_KEY_ID
+        sync: false
+      - key: AWS_SECRET_ACCESS_KEY
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: GROQ_API_KEY
+        sync: false
