@@ -122,4 +122,13 @@ def run_worker():
 
 
 if __name__ == "__main__":
-    run_worker()
+    print("🚀 Worker started...")
+
+    while True:
+        try:
+            run_worker()
+        except Exception as e:
+            print("Worker error:", e)
+
+        print("⏳ Waiting 30 seconds...\n")
+        time.sleep(30)
