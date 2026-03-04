@@ -1,12 +1,14 @@
 import os
+import json
 import boto3
+
 from dotenv import load_dotenv
 from datetime import datetime, timezone
 from boto3.dynamodb.conditions import Attr
 from botocore.exceptions import ClientError
 
-load_dotenv()
 
+load_dotenv()
 # -----------------------------
 # AWS SETUP
 # -----------------------------
@@ -22,7 +24,7 @@ results_table = dynamodb.Table("screening_results")
 
 
 # -----------------------------
-# PARSE createdAt SAFELY
+# HELPER: PARSE createdAt SAFELY
 # -----------------------------
 def parse_created_at(value):
     try:
@@ -41,7 +43,7 @@ def parse_created_at(value):
 
 
 # -----------------------------
-# FETCH LATEST SUBMITTED
+# FETCH LATEST SUBMITTED STARTUP
 # -----------------------------
 def fetch_one_submitted_startup():
     try:
@@ -54,6 +56,7 @@ def fetch_one_submitted_startup():
         if not items:
             return None
 
+        # sort latest
         items.sort(
             key=lambda x: parse_created_at(x.get("createdAt")),
             reverse=True
@@ -61,12 +64,12 @@ def fetch_one_submitted_startup():
 
         latest = items[0]
 
-        print("Selected startup:", latest.get("id"))
+        print("📌 Selected startup:", latest.get("id"))
 
         return latest
 
     except ClientError as e:
-        print("Error fetching startups:", e)
+        print("❌ Error fetching startups:", e)
         return None
 
 
@@ -82,46 +85,35 @@ def update_startup_status(startup_id, status):
             ExpressionAttributeValues={":val": status},
         )
     except ClientError as e:
-        print("Error updating status:", e)
+        print("❌ Error updating status:", e)
 
 
 # -----------------------------
-# STORE RESULT (FIXED)
+# STORE SCREENING RESULT (FIXED)
 # -----------------------------
 def store_screening_result(startup, result):
     try:
-        results_table.put_item(
-            Item={
-                "resultId": str(startup["id"]),
-                "startupId": startup["id"],
-                "startupName": startup.get("startupName", "Unknown"),
-                "companyEmail": startup.get("companyEmail", ""),
+        item = {
+            "resultId": str(startup["id"]),
+            "startupId": startup["id"],
+            "startupName": startup.get("startupName", "Unknown"),
+            "companyEmail": startup.get("companyEmail", ""),
 
-                # ✅ CLEAN JSON (NO DynamoDB manual typing)
-                "scoresJSON": {
-                    "Founder_and_Team": result["Founder_and_Team"],
-                    "Problem_and_Market": result["Problem_and_Market"],
-                    "Solution_and_Product": result["Solution_and_Product"],
-                    "Traction_and_Validation": result["Traction_and_Validation"],
-                    "Business_Model_and_Scalability": result["Business_Model_and_Scalability"],
-                    "Incubation_Fit": result["Incubation_Fit"],
-                    "Total_Score": result["Total_Score"],
-                    "Decision": result["Decision"],
-                    "Reasoning": result["Reasoning"],
-                    "Red_Flags": result.get("Red_Flags", []),
-                },
+            # ✅ STORE CLEAN JSON
+            "scoresJSON": json.dumps(result.get("scores", {})),
 
-                "totalScore": result["Total_Score"],
-                "decision": result["Decision"],
-                "reasoning": result["Reasoning"],
-                "red_flags": result.get("Red_Flags", []),
+            "totalScore": int(result.get("totalScore", 0)),
+            "decision": result.get("decision", "Reject"),
+            "reasoning": result.get("reasoning", ""),
+            "red_flags": result.get("red_flags", []),
 
-                "emailSent": False,
-                "createdAt": datetime.utcnow().isoformat(),
-            }
-        )
+            "emailSent": False,
+            "createdAt": datetime.utcnow().isoformat(),
+        }
 
-        print("✅ Stored result in DynamoDB")
+        results_table.put_item(Item=item)
+
+        print("✅ Result stored in DynamoDB")
 
     except ClientError as e:
         print("❌ Error storing result:", e)

@@ -1,59 +1,63 @@
-import os
-from dotenv import load_dotenv
-
-from openai_scorer import evaluate_startup as evaluate_openai
+from openai_scorer import evaluate_startup_openai
 from groq_scorer import evaluate_startup_groq
 
-load_dotenv()
 
+def evaluate_startup(pdf_path, startup):
 
-def evaluate_startup(pdf_path):
-    """
-    OpenAI → primary
-    Groq → fallback
-    """
-
-    # -----------------------------
-    # TRY OPENAI
-    # -----------------------------
     try:
-        print("🧠 Trying OpenAI...")
-
-        result = evaluate_openai(pdf_path)
-
-        # Validate output
-        if not result or result.get("Total_Score", 0) == 0:
-            raise Exception("Invalid OpenAI result")
-
-        print("✅ OpenAI success")
-        return result
-
+        data = evaluate_startup_openai(pdf_path)
     except Exception as e:
-        print("⚠️ OpenAI failed:", e)
+        print("OpenAI failed, switching to Groq")
+        data = evaluate_startup_groq(pdf_path)
 
-    # -----------------------------
-    # FALLBACK → GROQ
-    # -----------------------------
-    try:
-        print("🔁 Switching to Groq...")
+    scores = {
+        "Founder_and_Team": int(data.get("Founder_and_Team", 0)),
+        "Problem_and_Market": int(data.get("Problem_and_Market", 0)),
+        "Solution_and_Product": int(data.get("Solution_and_Product", 0)),
+        "Traction_and_Validation": int(data.get("Traction_and_Validation", 0)),
+        "Business_Model_and_Scalability": int(data.get("Business_Model_and_Scalability", 0)),
+        "Incubation_Fit": int(data.get("Incubation_Fit", 0)),
+    }
 
-        result = evaluate_startup_groq(pdf_path)
+    total_score = sum(scores.values())
 
-        print("✅ Groq success")
-        return result
+    is_bad_deck = data.get("is_bad_deck", False)
 
-    except Exception as e:
-        print("❌ Groq failed:", e)
+    is_registered = startup.get("isRegisteredCompany", False)
 
-        return {
-            "Founder_and_Team": 0,
-            "Problem_and_Market": 0,
-            "Solution_and_Product": 0,
-            "Traction_and_Validation": 0,
-            "Business_Model_and_Scalability": 0,
-            "Incubation_Fit": 0,
-            "Total_Score": 0,
-            "Decision": "Reject",
-            "Reasoning": "Both OpenAI and Groq failed",
-            "Red_Flags": ["evaluation_failure"],
-        }
+    # --------------------------
+    # FINAL DECISION LOGIC
+    # --------------------------
+
+    if is_bad_deck:
+
+        decision = "Reject"
+
+    else:
+
+        if not is_registered:
+
+            decision = "Pre-incubation"
+
+        else:
+
+            decision = "Incubation"
+
+        # score downgrade
+        if total_score < 40:
+            decision = "Reject"
+
+        elif total_score < 60 and decision == "Incubation":
+            decision = "Pre-incubation"
+
+    result = {
+        **scores,
+        "Total_Score": total_score,
+        "Decision": decision,
+        "Reasoning": data.get("Reasoning", ""),
+        "Red_Flags": data.get("Red_Flags", [])
+    }
+
+    print("\n📊 FINAL RESULT:", result)
+
+    return result
